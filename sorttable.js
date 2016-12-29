@@ -17,7 +17,7 @@
   This basically means: do what you want with it.
 */
 
-sorttable = {
+var sorttable = {
 
     selector_tables : 'table.sortable',
     class_sort_bottom : 'sortbottom',
@@ -170,155 +170,159 @@ sorttable = {
         // "total" rows, for example). This is B&R, since what you're supposed
         // to do is put them in a tfoot. So, if there are sortbottom rows,
         // for backwards compatibility, move them to tfoot (creating it if needed).
-        sortbottomrows = [];
+        var sortbottomrows = [];
         for (var i=0; i<table_element.rows.length; i++) {
-          if (table_element.rows[i].classList.contains(sorttable.class_sort_bottom)) {
-            sortbottomrows[sortbottomrows.length] = table_element.rows[i];
-          }
+            if (table_element.rows[i].classList.contains(sorttable.class_sort_bottom)) {
+                sortbottomrows[sortbottomrows.length] = table_element.rows[i];
+            }
         }
         if (sortbottomrows) {
-          if (table_element.tFoot == null) {
-            // table doesn't have a tfoot. Create one.
-            tfo = document.createElement('tfoot');
-            table_element.appendChild(tfo);
-          }
-          for (var i=0; i<sortbottomrows.length; i++) {
-            tfo.appendChild(sortbottomrows[i]);
-          }
-          delete sortbottomrows;
+            if (table_element.tFoot == null) {
+                // table doesn't have a tfoot. Create one.
+                var tfoot_element = document.createElement('tfoot');
+                table_element.appendChild(tfoot_element);
+            }
+            for (var i=0; i<sortbottomrows.length; i++) {
+                tfoot_element.appendChild(sortbottomrows[i]);
+            }
         }
 
         // work through each column and calculate its type
-        headrow = table_element.tHead.rows[0].cells;
+        var headrow = table_element.tHead.rows[0].cells;
         for (var i=0; i<headrow.length; i++) {
-          // manually override the type with a sorttable_type attribute
-          if (!headrow[i].classList.contains(sorttable.class_no_sort)) { // skip this col
-            mtch = headrow[i].className.match(sorttable.regex_any_sorttable_class);
-            if (mtch) { override = mtch[1]; }
-              if (mtch && typeof sorttable["sort_"+override] == 'function') {
-                headrow[i].sorttable_sortfunction = sorttable["sort_"+override];
-              } else {
-                headrow[i].sorttable_sortfunction = sorttable.guessType(table_element,i);
-              }
-              // make it clickable to sort
-              headrow[i].sorttable_columnindex = i;
-              headrow[i].sorttable_tbody = table_element.tBodies[0];
-              headrow[i].addEventListener("click", sorttable.innerSortFunction);
+            // manually override the type with a sorttable_type attribute
+            if (!headrow[i].classList.contains(sorttable.class_no_sort)) { 
+                // skip this col
+                mtch = headrow[i].className.match(sorttable.regex_any_sorttable_class);
+                if (mtch) {
+                    override = mtch[1];
+                }
+                if (mtch && typeof sorttable["sort_"+override] == 'function') {
+                    headrow[i].sorttable_sortfunction = sorttable["sort_"+override];
+                } else {
+                    headrow[i].sorttable_sortfunction = sorttable.guessType(table_element,i);
+                }
+                // make it clickable to sort
+                headrow[i].sorttable_columnindex = i;
+                headrow[i].sorttable_tbody = table_element.tBodies[0];
+                headrow[i].addEventListener("click", sorttable.innerSortFunction);
             }
         }
     },
 
-  guessType: function(table, column) {
-    // guess the type of a column based on its first non-blank row
-    return sorttable.sort_alpha;
-  },
+    guessType: function(table, column) {
+        // guess the type of a column based on its first non-blank row
+        return sorttable.sort_alpha;
+    },
 
-  getInnerText: function(node) {
-    // gets the text we want to use for sorting for a cell.
-    // strips leading and trailing whitespace.
-    // this is *not* a generic getInnerText function; it's special to sorttable.
-    // for example, you can override the cell text with a customkey attribute.
-    // it also gets .value for <input> fields.
+    getInnerText: function(node) {
+        // gets the text we want to use for sorting for a cell.
+        // strips leading and trailing whitespace.
+        // this is *not* a generic getInnerText function; it's special to sorttable.
+        // for example, you can override the cell text with a customkey attribute.
+        // it also gets .value for <input> fields.
 
-    if (!node) return "";
+        if (!node) return "";
 
-    hasInputs = (typeof node.getElementsByTagName == 'function') &&
-                 node.getElementsByTagName('input').length;
+        if ((node.dataset !== undefined) && (node.dataset.value !== undefined)) {
+            return node.dataset.value;
+        }
 
-    if (node.getAttribute("sorttable_customkey") != null) {
-      return node.getAttribute("sorttable_customkey");
+        hasInputs = (typeof node.getElementsByTagName == 'function') && node.getElementsByTagName('input').length;
+
+        if (node.getAttribute("sorttable_customkey") != null) {
+            return node.getAttribute("sorttable_customkey");
+        }
+        
+        if (typeof node.textContent != 'undefined' && !hasInputs) {
+            return node.textContent.replace(sorttable.regex_trim, '');
+        }
+        if (typeof node.innerText != 'undefined' && !hasInputs) {
+            return node.innerText.replace(sorttable.regex_trim, '');
+        }
+
+        if (typeof node.text != 'undefined' && !hasInputs) {
+            return node.text.replace(sorttable.regex_trim, '');
+        }
+
+        switch (node.nodeType) {
+            case 3:
+                if (node.nodeName.toLowerCase() == 'input') {
+                    return node.value.replace(sorttable.regex_trim, '');
+                }
+            case 4:
+                return node.nodeValue.replace(sorttable.regex_trim, '');
+                break;
+            case 1:
+            case 11:
+                var innerText = '';
+                for (var i = 0; i < node.childNodes.length; i++) {
+                    innerText += sorttable.getInnerText(node.childNodes[i]);
+                }
+                return innerText.replace(sorttable.regex_trim, '');
+                break;
+            default:
+                return '';
+        }
+    },
+
+    reverse: function(tbody) {
+        // reverse the rows in a tbody
+        var newrows = [];
+        for (var i=0; i<tbody.rows.length; i++) {
+          newrows[newrows.length] = tbody.rows[i];
+        }
+        for (var i=newrows.length-1; i>=0; i--) {
+           tbody.appendChild(newrows[i]);
+        }
+    },
+
+    /* sort functions
+         each sort function takes two parameters, a and b
+         you are comparing a[0] and b[0] */
+    sort_numeric: function(a,b) {
+        var aa = parseFloat(a[0].replace(sorttable.regex_non_decimal,''));
+        if (isNaN(aa)) aa = 0;
+        var bb = parseFloat(b[0].replace(sorttable.regex_non_decimal,''));
+        if (isNaN(bb)) bb = 0;
+        return aa-bb;
+    },
+
+    sort_alpha: function(a,b) {
+        if (a[0]==b[0]) return 0;
+        if (a[0]<b[0]) return -1;
+        return 1;
+    },
+
+    shaker_sort: function(list, comp_func) {
+        // A stable sort function to allow multi-level sorting of data
+        // see: http://en.wikipedia.org/wiki/Cocktail_sort
+        // thanks to Joseph Nahmias
+        var b = 0;
+        var t = list.length - 1;
+        var swap = true;
+
+        while(swap) {
+            swap = false;
+            for(var i = b; i < t; ++i) {
+                if ( comp_func(list[i], list[i+1]) > 0 ) {
+                    var q = list[i]; list[i] = list[i+1]; list[i+1] = q;
+                    swap = true;
+                }
+            } // for
+            t--;
+
+            if (!swap) break;
+
+            for(var i = t; i > b; --i) {
+                if ( comp_func(list[i], list[i-1]) < 0 ) {
+                    var q = list[i]; list[i] = list[i-1]; list[i-1] = q;
+                    swap = true;
+                }
+            } // for
+            b++;
+
+        } // while(swap)
     }
-    else if (typeof node.textContent != 'undefined' && !hasInputs) {
-      return node.textContent.replace(sorttable.regex_trim, '');
-    }
-    else if (typeof node.innerText != 'undefined' && !hasInputs) {
-      return node.innerText.replace(sorttable.regex_trim, '');
-    }
-    else if (typeof node.text != 'undefined' && !hasInputs) {
-      return node.text.replace(sorttable.regex_trim, '');
-    }
-    else {
-      switch (node.nodeType) {
-        case 3:
-          if (node.nodeName.toLowerCase() == 'input') {
-            return node.value.replace(sorttable.regex_trim, '');
-          }
-        case 4:
-          return node.nodeValue.replace(sorttable.regex_trim, '');
-          break;
-        case 1:
-        case 11:
-          var innerText = '';
-          for (var i = 0; i < node.childNodes.length; i++) {
-            innerText += sorttable.getInnerText(node.childNodes[i]);
-          }
-          return innerText.replace(sorttable.regex_trim, '');
-          break;
-        default:
-          return '';
-      }
-    }
-  },
-
-  reverse: function(tbody) {
-    // reverse the rows in a tbody
-    newrows = [];
-    for (var i=0; i<tbody.rows.length; i++) {
-      newrows[newrows.length] = tbody.rows[i];
-    }
-    for (var i=newrows.length-1; i>=0; i--) {
-       tbody.appendChild(newrows[i]);
-    }
-    delete newrows;
-  },
-
-  /* sort functions
-     each sort function takes two parameters, a and b
-     you are comparing a[0] and b[0] */
-  sort_numeric: function(a,b) {
-    aa = parseFloat(a[0].replace(sorttable.regex_non_decimal,''));
-    if (isNaN(aa)) aa = 0;
-    bb = parseFloat(b[0].replace(sorttable.regex_non_decimal,''));
-    if (isNaN(bb)) bb = 0;
-    return aa-bb;
-  },
-  sort_alpha: function(a,b) {
-    if (a[0]==b[0]) return 0;
-    if (a[0]<b[0]) return -1;
-    return 1;
-  },
-
-  shaker_sort: function(list, comp_func) {
-    // A stable sort function to allow multi-level sorting of data
-    // see: http://en.wikipedia.org/wiki/Cocktail_sort
-    // thanks to Joseph Nahmias
-    var b = 0;
-    var t = list.length - 1;
-    var swap = true;
-
-    while(swap) {
-        swap = false;
-        for(var i = b; i < t; ++i) {
-            if ( comp_func(list[i], list[i+1]) > 0 ) {
-                var q = list[i]; list[i] = list[i+1]; list[i+1] = q;
-                swap = true;
-            }
-        } // for
-        t--;
-
-        if (!swap) break;
-
-        for(var i = t; i > b; --i) {
-            if ( comp_func(list[i], list[i-1]) < 0 ) {
-                var q = list[i]; list[i] = list[i-1]; list[i-1] = q;
-                swap = true;
-            }
-        } // for
-        b++;
-
-    } // while(swap)
-  }
 }
-
-
 

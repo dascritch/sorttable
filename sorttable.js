@@ -18,141 +18,195 @@
 */
 
 sorttable = {
-  init: function() {
-    // quit if this function has already been called
-    if (arguments.callee.done) return;
-    // flag this function so we don't do the same thing twice
-    arguments.callee.done = true;
 
-    forEach(document.querySelectorAll('table.sortable'), function(table) {
-        sorttable.makeSortable(table);
-    });
+    selector_tables : 'table.sortable',
+    class_sort_bottom : 'sortbottom',
+    class_no_sort : 'sorttable_nosort',
+    class_sorted : 'sorttable_sorted',
+    class_sorted_reverse : 'sorttable_sorted_reverse',
+    id_sorttable_sortfwdind : 'sorttable_sortfwdind',
+    id_sorttable_sortfrevind : 'sorttable_sortrevind',
+    icon_up : '&nbsp;&#x25B4;',
+    icon_down : '&nbsp;&#x25BE;',
 
-  },
+    regex_non_decimal : /[^0-9\.\-]/g,
+    regex_trim : /^\s+|\s+$/g,
+    regex_any_sorttable_class : /\bsorttable_([a-z0-9]+)\b/,
 
-  makeSortable: function(table) {
-    if (table.getElementsByTagName('thead').length == 0) {
-      // table doesn't have a tHead. Since it should have, create one and
-      // put the first table row in it.
-      the = document.createElement('thead');
-      the.appendChild(table.rows[0]);
-      table.insertBefore(the,table.firstChild);
-    }
-    // Safari doesn't support table.tHead, sigh
-    if (table.tHead == null) table.tHead = table.getElementsByTagName('thead')[0];
+    init: function() {
+        // quit if this function has already been called
+        if (arguments.callee.done) return;
+        // flag this function so we don't do the same thing twice
+        arguments.callee.done = true;
 
-    if (table.tHead.rows.length != 1) return; // can't cope with two header rows
+        sorttable.forEach(document.querySelectorAll(sorttable.selector_tables), sorttable.makeSortable);
+    },
 
-    // Sorttable v1 put rows with a class of "sortbottom" at the bottom (as
-    // "total" rows, for example). This is B&R, since what you're supposed
-    // to do is put them in a tfoot. So, if there are sortbottom rows,
-    // for backwards compatibility, move them to tfoot (creating it if needed).
-    sortbottomrows = [];
-    for (var i=0; i<table.rows.length; i++) {
-      if (table.rows[i].className.search(/\bsortbottom\b/) != -1) {
-        sortbottomrows[sortbottomrows.length] = table.rows[i];
-      }
-    }
-    if (sortbottomrows) {
-      if (table.tFoot == null) {
-        // table doesn't have a tfoot. Create one.
-        tfo = document.createElement('tfoot');
-        table.appendChild(tfo);
-      }
-      for (var i=0; i<sortbottomrows.length; i++) {
-        tfo.appendChild(sortbottomrows[i]);
-      }
-      delete sortbottomrows;
-    }
+    insert_thead_in_table : function(table_element) {
+        if (table_element.getElementsByTagName('thead').length === 0) {
+            // table doesn't have a tHead. Since it should have, create one and
+            // put the first table row in it.
+            thead_element = document.createElement('thead');
+            thead_element.appendChild(table_element.rows[0]);
+            table_element.insertBefore(thead_element,table_element.firstChild);
+        }        
+    },
 
-    // work through each column and calculate its type
-    headrow = table.tHead.rows[0].cells;
-    for (var i=0; i<headrow.length; i++) {
-      // manually override the type with a sorttable_type attribute
-      if (!headrow[i].className.match(/\bsorttable_nosort\b/)) { // skip this col
-        mtch = headrow[i].className.match(/\bsorttable_([a-z0-9]+)\b/);
-        if (mtch) { override = mtch[1]; }
-          if (mtch && typeof sorttable["sort_"+override] == 'function') {
-            headrow[i].sorttable_sortfunction = sorttable["sort_"+override];
-          } else {
-            headrow[i].sorttable_sortfunction = sorttable.guessType(table,i);
-          }
-          // make it clickable to sort
-          headrow[i].sorttable_columnindex = i;
-          headrow[i].sorttable_tbody = table.tBodies[0];
-          headrow[i].addEventListener("click", sorttable.innerSortFunction = function(e) {
+    forEach : function(object, block, context) {
+        /* ******************************************************************
+          Supporting functions: bundled here to avoid depending on a library
+        ****************************************************************** */
+       // globally resolve forEach enumeration
+        if (object) {
+            var resolve = Object; // default
+            if (object instanceof Function) {
+                // functions have a "length" property
+                resolve = Function;
+            } else if (object.forEach instanceof Function) {
+                // the object implements a custom forEach method so use that
+                object.forEach(block, context);
+                return;
+            } else if (typeof object == "string") {
+                // the object is a string
+                resolve = String;
+            } else if (typeof object.length == "number") {
+                // the object is array-like
+                resolve = Array;
+            }
+            resolve.forEach(object, block, context);
+        }
+    },
 
-          if (this.classList.contains('sorttable_sorted')) {
+    innerSortFunction : function(event) {
+
+        if (this.classList.contains(sorttable.class_sorted)) {
             // if we're already sorted by this column, just
             // reverse the table, which is quicker
             sorttable.reverse(this.sorttable_tbody);
-            this.className = this.className.replace('sorttable_sorted',
-                                                    'sorttable_sorted_reverse');
-            this.removeChild(document.getElementById('sorttable_sortfwdind'));
+            this.classList.remove(sorttable.class_sorted);
+            this.classList.add(sorttable.class_sorted_reverse);
+            this.removeChild(document.getElementById(sorttable.id_sorttable_sortfwdind));
             sortrevind = document.createElement('span');
-            sortrevind.id = "sorttable_sortrevind";
-            sortrevind.innerHTML = '&nbsp;&#x25B4;';
+            sortrevind.id = sorttable.id_sorttable_sortfrevind;
+            sortrevind.innerHTML = sorttable.icon_up;
             this.appendChild(sortrevind);
+            event.preventDefault();
             return;
-          }
-          if (this.classList.contains('sorttable_sorted_reverse')) {
+        }
+
+        if (this.classList.contains(sorttable.class_sorted_reverse)) {
             // if we're already sorted by this column in reverse, just
             // re-reverse the table, which is quicker
             sorttable.reverse(this.sorttable_tbody);
-            this.className = this.className.replace('sorttable_sorted_reverse',
-                                                    'sorttable_sorted');
-            this.removeChild(document.getElementById('sorttable_sortrevind'));
+            this.classList.remove(sorttable.class_sorted_reverse);
+            this.classList.add(sorttable.class_sorted);
+            this.removeChild(document.getElementById(sorttable.id_sorttable_sortfrevind));
             sortfwdind = document.createElement('span');
-            sortfwdind.id = "sorttable_sortfwdind";
-            sortfwdind.innerHTML = '&nbsp;&#x25BE;';
+            sortfwdind.id = sorttable.id_sorttable_sortfwdind;
+            sortfwdind.innerHTML = sorttable.icon_down;
             this.appendChild(sortfwdind);
+            event.preventDefault();
             return;
-          }
-
-          // remove sorttable_sorted classes
-          theadrow = this.parentNode;
-          forEach(theadrow.childNodes, function(cell) {
-            if (cell.nodeType == 1) { // an element
-              cell.className = cell.className.replace('sorttable_sorted_reverse','');
-              cell.className = cell.className.replace('sorttable_sorted','');
-            }
-          });
-          sortfwdind = document.getElementById('sorttable_sortfwdind');
-          if (sortfwdind) { sortfwdind.parentNode.removeChild(sortfwdind); }
-          sortrevind = document.getElementById('sorttable_sortrevind');
-          if (sortrevind) { sortrevind.parentNode.removeChild(sortrevind); }
-
-          this.className += ' sorttable_sorted';
-          sortfwdind = document.createElement('span');
-          sortfwdind.id = "sorttable_sortfwdind";
-          sortfwdind.innerHTML = '&nbsp;&#x25BE;';
-          this.appendChild(sortfwdind);
-
-            // build an array to sort. This is a Schwartzian transform thing,
-            // i.e., we "decorate" each row with the actual sort key,
-            // sort based on the sort keys, and then put the rows back in order
-            // which is a lot faster because you only do getInnerText once per row
-            row_array = [];
-            col = this.sorttable_columnindex;
-            rows = this.sorttable_tbody.rows;
-            for (var j=0; j<rows.length; j++) {
-              row_array[row_array.length] = [sorttable.getInnerText(rows[j].cells[col]), rows[j]];
-            }
-            /* If you want a stable sort, uncomment the following line */
-            //sorttable.shaker_sort(row_array, this.sorttable_sortfunction);
-            /* and comment out this one */
-            row_array.sort(this.sorttable_sortfunction);
-
-            tb = this.sorttable_tbody;
-            for (var j=0; j<row_array.length; j++) {
-              tb.appendChild(row_array[j][1]);
-            }
-
-            delete row_array;
-          });
         }
-    }
-  },
+
+        // remove sorttable_sorted classes
+        theadrow = this.parentNode;
+        sorttable.forEach(theadrow.childNodes, function(cell) {
+        if (cell.nodeType == 1) { // an element
+            cell.classList.remove(sorttable.class_sorted_reverse);
+            cell.classList.remove(sorttable.class_sorted);
+        }
+        });
+        sortfwdind = document.getElementById(sorttable.id_sorttable_sortfwdind);
+        if (sortfwdind) {
+            sortfwdind.parentNode.removeChild(sortfwdind); 
+        }
+        sortrevind = document.getElementById(sorttable.id_sorttable_sortfrevind);
+        if (sortrevind) {
+            sortrevind.parentNode.removeChild(sortrevind);
+        }
+
+        this.classList.add(sorttable.class_sorted);
+        sortfwdind = document.createElement('span');
+        sortfwdind.id = sorttable.id_sorttable_sortfwdind;
+        sortfwdind.innerHTML = sorttable.icon_down;
+        this.appendChild(sortfwdind);
+
+        // build an array to sort. This is a Schwartzian transform thing,
+        // i.e., we "decorate" each row with the actual sort key,
+        // sort based on the sort keys, and then put the rows back in order
+        // which is a lot faster because you only do getInnerText once per row
+        row_array = [];
+        col = this.sorttable_columnindex;
+        rows = this.sorttable_tbody.rows;
+        for (var j=0; j<rows.length; j++) {
+            row_array[row_array.length] = [sorttable.getInnerText(rows[j].cells[col]), rows[j]];
+        }
+        /* If you want a stable sort, uncomment the following line */
+        //sorttable.shaker_sort(row_array, this.sorttable_sortfunction);
+        /* and comment out this one */
+        row_array.sort(this.sorttable_sortfunction);
+
+        tb = this.sorttable_tbody;
+        for (var j=0; j<row_array.length; j++) {
+            tb.appendChild(row_array[j][1]);
+        }
+        event.preventDefault();
+
+        delete row_array;
+    },
+
+    makeSortable: function(table_element) {
+        sorttable.insert_thead_in_table(table_element);
+
+        // Safari doesn't support table.tHead, sigh
+        if (table_element.tHead == null) {
+            table_element.tHead = table_element.getElementsByTagName('thead')[0];
+        } 
+
+        if (table_element.tHead.rows.length != 1) return; // can't cope with two header rows
+
+        // Sorttable v1 put rows with a class of "sortbottom" at the bottom (as
+        // "total" rows, for example). This is B&R, since what you're supposed
+        // to do is put them in a tfoot. So, if there are sortbottom rows,
+        // for backwards compatibility, move them to tfoot (creating it if needed).
+        sortbottomrows = [];
+        for (var i=0; i<table_element.rows.length; i++) {
+          if (table_element.rows[i].classList.contains(sorttable.class_sort_bottom)) {
+            sortbottomrows[sortbottomrows.length] = table_element.rows[i];
+          }
+        }
+        if (sortbottomrows) {
+          if (table_element.tFoot == null) {
+            // table doesn't have a tfoot. Create one.
+            tfo = document.createElement('tfoot');
+            table_element.appendChild(tfo);
+          }
+          for (var i=0; i<sortbottomrows.length; i++) {
+            tfo.appendChild(sortbottomrows[i]);
+          }
+          delete sortbottomrows;
+        }
+
+        // work through each column and calculate its type
+        headrow = table_element.tHead.rows[0].cells;
+        for (var i=0; i<headrow.length; i++) {
+          // manually override the type with a sorttable_type attribute
+          if (!headrow[i].classList.contains(sorttable.class_no_sort)) { // skip this col
+            mtch = headrow[i].className.match(sorttable.regex_any_sorttable_class);
+            if (mtch) { override = mtch[1]; }
+              if (mtch && typeof sorttable["sort_"+override] == 'function') {
+                headrow[i].sorttable_sortfunction = sorttable["sort_"+override];
+              } else {
+                headrow[i].sorttable_sortfunction = sorttable.guessType(table_element,i);
+              }
+              // make it clickable to sort
+              headrow[i].sorttable_columnindex = i;
+              headrow[i].sorttable_tbody = table_element.tBodies[0];
+              headrow[i].addEventListener("click", sorttable.innerSortFunction);
+            }
+        }
+    },
 
   guessType: function(table, column) {
     // guess the type of a column based on its first non-blank row
@@ -175,22 +229,22 @@ sorttable = {
       return node.getAttribute("sorttable_customkey");
     }
     else if (typeof node.textContent != 'undefined' && !hasInputs) {
-      return node.textContent.replace(/^\s+|\s+$/g, '');
+      return node.textContent.replace(sorttable.regex_trim, '');
     }
     else if (typeof node.innerText != 'undefined' && !hasInputs) {
-      return node.innerText.replace(/^\s+|\s+$/g, '');
+      return node.innerText.replace(sorttable.regex_trim, '');
     }
     else if (typeof node.text != 'undefined' && !hasInputs) {
-      return node.text.replace(/^\s+|\s+$/g, '');
+      return node.text.replace(sorttable.regex_trim, '');
     }
     else {
       switch (node.nodeType) {
         case 3:
           if (node.nodeName.toLowerCase() == 'input') {
-            return node.value.replace(/^\s+|\s+$/g, '');
+            return node.value.replace(sorttable.regex_trim, '');
           }
         case 4:
-          return node.nodeValue.replace(/^\s+|\s+$/g, '');
+          return node.nodeValue.replace(sorttable.regex_trim, '');
           break;
         case 1:
         case 11:
@@ -198,7 +252,7 @@ sorttable = {
           for (var i = 0; i < node.childNodes.length; i++) {
             innerText += sorttable.getInnerText(node.childNodes[i]);
           }
-          return innerText.replace(/^\s+|\s+$/g, '');
+          return innerText.replace(sorttable.regex_trim, '');
           break;
         default:
           return '';
@@ -222,9 +276,9 @@ sorttable = {
      each sort function takes two parameters, a and b
      you are comparing a[0] and b[0] */
   sort_numeric: function(a,b) {
-    aa = parseFloat(a[0].replace(/[^0-9.-]/g,''));
+    aa = parseFloat(a[0].replace(sorttable.regex_non_decimal,''));
     if (isNaN(aa)) aa = 0;
-    bb = parseFloat(b[0].replace(/[^0-9.-]/g,''));
+    bb = parseFloat(b[0].replace(sorttable.regex_non_decimal,''));
     if (isNaN(bb)) bb = 0;
     return aa-bb;
   },
@@ -266,31 +320,5 @@ sorttable = {
   }
 }
 
-/* ******************************************************************
-   Supporting functions: bundled here to avoid depending on a library
-   ****************************************************************** */
-
-
-// globally resolve forEach enumeration
-var forEach = function(object, block, context) {
-    if (object) {
-        var resolve = Object; // default
-        if (object instanceof Function) {
-            // functions have a "length" property
-            resolve = Function;
-        } else if (object.forEach instanceof Function) {
-            // the object implements a custom forEach method so use that
-            object.forEach(block, context);
-            return;
-        } else if (typeof object == "string") {
-            // the object is a string
-            resolve = String;
-        } else if (typeof object.length == "number") {
-            // the object is array-like
-            resolve = Array;
-        }
-        resolve.forEach(object, block, context);
-    }
-};
 
 
